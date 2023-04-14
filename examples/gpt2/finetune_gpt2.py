@@ -100,7 +100,18 @@ def prepare_dataset(args, tokenizer, base_path, dataset_name, rank, world_size):
     verbalizer = torch.LongTensor(DATASET[dataset_name].get_verbalizer(tokenizer)).cuda()
     return dataset, verbalizer
 
+        
 def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalizer):
+    output_dir = '../result/{}/{}/'\
+        .format(args.model_config, args.dataset_name)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    with open(os.path.join(output_dir, "token.txt"), "w") as f:
+        time_tuple = time.localtime(time.time())
+        print('Time {}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}:'
+              .format(time_tuple[0], time_tuple[1], time_tuple[2], time_tuple[3],
+                      time_tuple[4], time_tuple[5]), file=f)
+        
     loss_func = bmt.loss.FusedCrossEntropy(ignore_index=-100)
 
     optim_manager = bmt.optim.OptimManager(loss_scale=args.loss_scale, loss_scale_steps=100)
@@ -115,12 +126,20 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
         }
 
         model.train()
+        epoch_token_num = 0
+        epoch_time = 0
+        with open(os.path.join(output_dir, "token.txt"), "a") as f:
+            print("Epoch {}:".format(epoch+1), file=f)
         for it, data in enumerate(dataloader['train']):
             input_ids = data["input_ids"]
             input_length = data["input_length"]
+            # print("input_id:", input_ids.shape)
+            # print("input_len:", input_length.shape)
             labels = data["labels"]
             targets = data["targets"]
             index = data["index"]
+            batch_token_num = input_length.sum()
+            epoch_token_num += batch_token_num
 
             torch.cuda.synchronize()
             st_time = time.time()
@@ -143,9 +162,10 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
 
             torch.cuda.synchronize()
             elapsed_time = time.time() - st_time
+            epoch_time += elapsed_time
 
             bmt.print_rank(
-                "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} | time: {:.3f}".format(
+                "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} | time: {:.3f} | tokens/s: {:.1f}".format(
                     epoch,
                     it,
                     len(dataloader["train"]),
@@ -154,12 +174,17 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
                     int(optim_manager.loss_scale),
                     grad_norm,
                     elapsed_time,
+                    batch_token_num / elapsed_time,
                 )
             )
+            with open(os.path.join(output_dir, "token.txt"), "a") as f:
+                print("    iter {}: {:.1f} token/s".format(it, batch_token_num / elapsed_time), file=f)
             # if it % args.inspect_iters == 0: print_inspect(model, "*")
             # if args.save != None and it % args.save_iters == 0:
             #     bmt.save(model, os.path.join(args.save, args.save_name+("-%d.pt" % it)))
-
+        with open(os.path.join(output_dir, "token.txt"), "a") as f:
+            print("    batch {}: {:.1f} token/s".format(epoch+1, epoch_token_num / epoch_time), file=f)
+            print()
         model.eval()
         with torch.no_grad():
             for split in ['dev']:

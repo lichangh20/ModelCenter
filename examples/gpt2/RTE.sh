@@ -12,7 +12,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --master_addr $MASTER_ADDR \
                   --master_port $MASTER_PORT"
 
-BASE_PATH="/home/hx/ModelCenter"
+BASE_PATH="/home/ubuntu/lichangh20/ModelCenter"
 VERSION="base"
 DATASET="RTE"
 
