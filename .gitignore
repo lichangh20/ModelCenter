@@ -138,7 +138,7 @@ raw_data/
 checkpoints/
 results
 new_data
-down_data
+# down_data
 examples/result
 
 *.bin
