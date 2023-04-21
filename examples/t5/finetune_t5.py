@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score, f1_score
 import bmtrain as bmt
 
 from model_center import get_args
-from model_center.model import T5
+from model_center.model import T5, T5Config
 from model_center.tokenizer import T5Tokenizer
 from model_center.dataset.t5dataset import DATASET
 from model_center.utils import print_inspect
@@ -22,7 +22,10 @@ def get_tokenizer(args):
     return tokenizer
 
 def get_model(args):
-    model = T5.from_pretrained(args.model_config)
+    # model = T5.from_pretrained(args.model_config)
+    config = T5Config.from_pretrained(args.model_config)
+    model = T5(config)
+    bmt.init_parameters(model)
     return model
 
 def get_optimizer(args, model):
@@ -103,6 +106,16 @@ def prepare_dataset(args, tokenizer, base_path, dataset_name, rank, world_size):
 
 
 def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalizer):
+    output_dir = '../result/{}/{}/'\
+        .format(args.model_config, args.dataset_name)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    if args.local_rank == 0:
+        with open(os.path.join(output_dir, "token.txt"), "w") as f:
+            time_tuple = time.localtime(time.time())
+            print('Time {}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}:'
+                .format(time_tuple[0], time_tuple[1], time_tuple[2], time_tuple[3],
+                        time_tuple[4], time_tuple[5]), file=f)
     loss_func = bmt.loss.FusedCrossEntropy(ignore_index=-100)
 
     optim_manager = bmt.optim.OptimManager(loss_scale=args.loss_scale, loss_scale_steps=100)
@@ -119,6 +132,11 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
         }
 
         model.train()
+        epoch_token_num = 0
+        epoch_time = 0
+        if args.local_rank == 0:
+            with open(os.path.join(output_dir, "token.txt"), "a") as f:
+                print("Epoch {}:".format(epoch+1), file=f)
         for it, data in enumerate(dataloader['train']):
             enc_input = data["enc_input"]
             enc_length = data["enc_length"]
@@ -126,6 +144,11 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
             dec_length = data["dec_length"]
             targets = data["targets"]
             index = data["index"]
+            batch_token_num = enc_input.numel() + dec_input.numel()
+            epoch_token_num += batch_token_num
+            
+            torch.cuda.synchronize()
+            st_time = time.time()
 
             logits = model(enc_input, enc_length, dec_input, dec_length, output_logits=True).logits
             logits = logits.index_select(dim=-1, index=verbalizer)
@@ -140,9 +163,13 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
             grad_norm = optim_manager.clip_grad_norm(optimizer.param_groups, args.clip_grad, norm_type = 2)
 
             optim_manager.step()
+            
+            torch.cuda.synchronize()
+            elapsed_time = time.time() - st_time
+            epoch_time += elapsed_time
 
             bmt.print_rank(
-                "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} |".format(
+                "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} | time: {:.3f} | tokens/s: {:.1f}".format(
                     epoch,
                     it,
                     len(dataloader["train"]),
@@ -150,12 +177,19 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
                     lr_scheduler.current_lr,
                     int(optim_manager.loss_scale),
                     grad_norm,
+                    elapsed_time,
+                    batch_token_num * 8/ elapsed_time,
                 )
             )
+            if args.local_rank == 0:
+                with open(os.path.join(output_dir, "token.txt"), "a") as f:
+                    print("    iter {}: {:.1f} token/s".format(it, batch_token_num * 8 / elapsed_time), file=f)
             # if it % args.inspect_iters == 0: print_inspect(model, "*")
             # if args.save != None and it % args.save_iters == 0:
             #     bmt.save(model, os.path.join(args.save, args.save_name+("-%d.pt" % it)))
-
+        if args.local_rank == 0:
+            with open(os.path.join(output_dir, "token.txt"), "a") as f:
+                print("    batch {}: {:.1f} token/s".format(epoch+1, epoch_token_num * 8 / epoch_time), file=f)
         model.eval()
         with torch.no_grad():
             for split in ['dev']:

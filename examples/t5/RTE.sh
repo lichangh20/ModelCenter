@@ -4,7 +4,7 @@ MASTER_ADDR=localhost
 MASTER_PORT=12345
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=1
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --nnodes $NNODES \
@@ -12,7 +12,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --master_addr $MASTER_ADDR \
                   --master_port $MASTER_PORT"
 
-BASE_PATH="/home/hx/ModelCenter"
+BASE_PATH="/home/ubuntu/lichangh20/ModelCenter"
 VERSION="11b"
 DATASET="RTE"
 
