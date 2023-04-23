@@ -22,15 +22,15 @@ def get_tokenizer(args):
     return tokenizer
 
 def get_model(args):
-    model = GPT2.from_pretrained(args.model_config)
-    # config = GPT2Config.from_pretrained(args.model_config)
-    # config.num_layers = 32
-    # config.dim_model = 2560
-    # config.dim_ff = 10240
-    # config.dim_head = 32
-    # config.num_heads = 80
-    # model = GPT2(config)
-    # bmt.init_parameters(model)
+    # model = GPT2.from_pretrained(args.model_config)
+    config = GPT2Config.from_pretrained(args.model_config)
+    config.num_layers = 32
+    config.dim_model = 2560
+    config.dim_ff = 10240
+    config.dim_head = 32
+    config.num_heads = 80
+    model = GPT2(config)
+    bmt.init_parameters(model)
     return model
 
 def get_optimizer(args, model):
