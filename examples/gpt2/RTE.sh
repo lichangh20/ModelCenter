@@ -4,7 +4,7 @@ MASTER_ADDR=localhost
 MASTER_PORT=12345
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=1
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --nnodes $NNODES \
@@ -20,7 +20,7 @@ OPTS=""
 OPTS+=" --dataset ${DATASET}"
 OPTS+=" --base-path ${BASE_PATH}"
 OPTS+=" --model-config gpt2-${VERSION}"
-OPTS+=" --batch-size 64"
+OPTS+=" --batch-size 16"
 OPTS+=" --train-iters 800"
 OPTS+=" --save-iters 1000"
 OPTS+=" --max-decoder-length 512"

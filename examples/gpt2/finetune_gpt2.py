@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
 
 import bmtrain as bmt
+# from thop import profile
 
 from model_center import get_args
 from model_center.model import GPT2, GPT2Config
@@ -21,15 +22,15 @@ def get_tokenizer(args):
     return tokenizer
 
 def get_model(args):
-    # model = GPT2.from_pretrained(args.model_config)
-    config = GPT2Config.from_pretrained(args.model_config)
-    config.num_layers = 32
-    config.dim_model = 2560
-    config.dim_ff = 10240
-    config.dim_head = 32
-    config.num_heads = 80
-    model = GPT2(config)
-    bmt.init_parameters(model)
+    model = GPT2.from_pretrained(args.model_config)
+    # config = GPT2Config.from_pretrained(args.model_config)
+    # config.num_layers = 32
+    # config.dim_model = 2560
+    # config.dim_ff = 10240
+    # config.dim_head = 32
+    # config.num_heads = 80
+    # model = GPT2(config)
+    # bmt.init_parameters(model)
     return model
 
 def get_optimizer(args, model):
@@ -125,7 +126,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
     optim_manager = bmt.optim.OptimManager(loss_scale=args.loss_scale, loss_scale_steps=100)
     optim_manager.add_optimizer(optimizer, lr_scheduler)
 
-    print_inspect(model, '*')
+    # print_inspect(model, '*')
 
     for epoch in range(1):
         dataloader = {
@@ -133,71 +134,79 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
             "dev": DistributedDataLoader(dataset['dev'], batch_size=args.batch_size, shuffle=False),
         }
 
-        model.train()
-        epoch_token_num = 0
-        epoch_time = 0
-        if args.local_rank == 0:
-            with open(os.path.join(output_dir, "token.txt"), "a") as f:
-                print("Epoch {}:".format(epoch+1), file=f)
-        for it, data in enumerate(dataloader['train']):
-            # import IPython
-            # IPython.embed()
-            input_ids = data["input_ids"]
-            input_length = data["input_length"]
-            # print("input_id:", input_ids.shape)
-            # print("input_len:", input_length.shape)
-            labels = data["labels"]
-            targets = data["targets"]
-            index = data["index"]
-            # batch_token_num = input_length.sum()
-            batch_token_num = input_ids.numel()
-            epoch_token_num += batch_token_num
+    #     model.train()
+    #     epoch_token_num = 0
+    #     epoch_time = 0
+    #     if args.local_rank == 0:
+    #         with open(os.path.join(output_dir, "token.txt"), "a") as f:
+    #             print("Epoch {}:".format(epoch+1), file=f)
+    #     for it, data in enumerate(dataloader['train']):
+    #         # import IPython
+    #         # IPython.embed()
+    #         input_ids = data["input_ids"]
+    #         input_length = data["input_length"]
+    #         # print("input_id:", input_ids.shape)
+    #         # print("input_len:", input_length.shape)
+    #         labels = data["labels"]
+    #         targets = data["targets"]
+    #         index = data["index"]
+    #         # batch_token_num = input_length.sum()
+    #         batch_token_num = input_ids.numel()
+    #         epoch_token_num += batch_token_num
 
-            torch.cuda.synchronize()
-            st_time = time.time()
+    #         torch.cuda.synchronize()
+    #         st_time = time.time()
+    #         # import IPython
+    #         # IPython.embed()
+    #         # flops, params = profile(model, inputs=(input_ids, input_length))
+    #         # print("Model FLOPS: {:.2f} GFLOPS".format(flops / 1e9))
+    #         # print("Model Params: {:.2f} M".format(params / 1e6))
+    #         output_model = model(input_ids, input_length, output_logits=True)
+    #         logits = output_model.logits
+    #         flops = output_model.flops
+    #         # print("tokens is:", input_ids.numel())
+    #         # print("flops is:", flops)
 
-            logits = model(input_ids, input_length, output_logits=True).logits
+    #         loss = loss_func(logits.view(-1, logits.shape[-1]), targets.view(-1))
 
-            loss = loss_func(logits.view(-1, logits.shape[-1]), targets.view(-1))
+    #         logits = logits.index_select(dim=-1, index=verbalizer)
+    #         logits = logits[torch.where(index==1)]
+    #         loss = loss + loss_func(logits, labels)
+    #         global_loss = bmt.sum_loss(loss).item()
 
-            logits = logits.index_select(dim=-1, index=verbalizer)
-            logits = logits[torch.where(index==1)]
-            loss = loss + loss_func(logits, labels)
-            global_loss = bmt.sum_loss(loss).item()
+    #         optim_manager.zero_grad()
 
-            optim_manager.zero_grad()
+    #         optim_manager.backward(loss)
+    #         grad_norm = optim_manager.clip_grad_norm(optimizer.param_groups, args.clip_grad, norm_type = 2)
 
-            optim_manager.backward(loss)
-            grad_norm = optim_manager.clip_grad_norm(optimizer.param_groups, args.clip_grad, norm_type = 2)
+    #         optim_manager.step()
 
-            optim_manager.step()
+    #         torch.cuda.synchronize()
+    #         elapsed_time = time.time() - st_time
+    #         epoch_time += elapsed_time
 
-            torch.cuda.synchronize()
-            elapsed_time = time.time() - st_time
-            epoch_time += elapsed_time
-
-            bmt.print_rank(
-                "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} | time: {:.3f} | tokens/s: {:.1f}".format(
-                    epoch,
-                    it,
-                    len(dataloader["train"]),
-                    global_loss,
-                    lr_scheduler.current_lr,
-                    int(optim_manager.loss_scale),
-                    grad_norm,
-                    elapsed_time,
-                    batch_token_num * 4/ elapsed_time,
-                )
-            )
-            if args.local_rank == 0:
-                with open(os.path.join(output_dir, "token.txt"), "a") as f:
-                    print("    iter {}: {:.1f} token/s".format(it, batch_token_num * 4 / elapsed_time), file=f)
-            # if it % args.inspect_iters == 0: print_inspect(model, "*")
-            # if args.save != None and it % args.save_iters == 0:
-            #     bmt.save(model, os.path.join(args.save, args.save_name+("-%d.pt" % it)))
-        if args.local_rank == 0:
-            with open(os.path.join(output_dir, "token.txt"), "a") as f:
-                print("    batch {}: {:.1f} token/s".format(epoch+1, epoch_token_num * 4 / epoch_time), file=f)
+    #         bmt.print_rank(
+    #             "train | epoch {:3d} | Iter: {:6d}/{:6d} | loss: {:.4f} | lr: {:.4e}, scale: {:10.4f} | grad_norm: {:.4f} | time: {:.3f} | tokens/s: {:.1f}".format(
+    #                 epoch,
+    #                 it,
+    #                 len(dataloader["train"]),
+    #                 global_loss,
+    #                 lr_scheduler.current_lr,
+    #                 int(optim_manager.loss_scale),
+    #                 grad_norm,
+    #                 elapsed_time,
+    #                 batch_token_num / elapsed_time,
+    #             )
+    #         )
+    #         if args.local_rank == 0:
+    #             with open(os.path.join(output_dir, "token.txt"), "a") as f:
+    #                 print("    iter {}: {:.1f} token/s".format(it, batch_token_num / elapsed_time), file=f)
+    #         # if it % args.inspect_iters == 0: print_inspect(model, "*")
+    #         # if args.save != None and it % args.save_iters == 0:
+    #         #     bmt.save(model, os.path.join(args.save, args.save_name+("-%d.pt" % it)))
+    #     if args.local_rank == 0:
+    #         with open(os.path.join(output_dir, "token.txt"), "a") as f:
+    #             print("    batch {}: {:.1f} token/s".format(epoch+1, epoch_token_num / epoch_time), file=f)
         model.eval()
         with torch.no_grad():
             for split in ['dev']:
@@ -208,8 +217,23 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
                     input_length = data["input_length"]
                     labels = data["labels"]
                     index = data["index"]
+                    token_num = input_ids.numel()
 
-                    logits = model(input_ids, input_length, output_logits=True).logits
+                    torch.cuda.synchronize()
+                    st_time = time.time()
+                    
+                    output_model = model(input_ids, input_length, output_logits=True)
+                    
+                    torch.cuda.synchronize()
+                    elapsed_time = time.time() - st_time
+                    
+                    logits = output_model.logits
+                    flops = output_model.flops
+                    print("tokens is:", input_ids.numel())
+                    print("flops is:", flops)
+                    # print("flops/s is {:.2%}".format(flops * token_num / (input_ids.numel() * elapsed_time * 1e12)))
+                    print("Tflops/s is",flops / (elapsed_time * 1e12))
+                    
                     logits = logits.index_select(dim=-1, index=verbalizer)
                     logits = logits[torch.where(index==1)]
                     logits = logits.argmax(dim=-1)
@@ -218,11 +242,12 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
                     gt.extend(labels.cpu().tolist())
 
                     bmt.print_rank(
-                        "{} | epoch {:3d} | Iter: {:6d}/{:6d} |".format(
+                        "{} | epoch {:3d} | Iter: {:6d}/{:6d} | tokens/s: {:.1f}".format(
                             split,
                             epoch,
                             it,
                             len(dataloader[split]),
+                            token_num / elapsed_time
                         )
                     )
                 pd = bmt.gather_result(torch.tensor(pd).int()).cpu().tolist()
@@ -242,6 +267,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalize
 def main():
     args = initialize()
     tokenizer, model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
+    
     dataset, verbalizer = prepare_dataset(
         args,
         tokenizer,
