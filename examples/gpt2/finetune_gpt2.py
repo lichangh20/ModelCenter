@@ -110,16 +110,16 @@ def prepare_dataset(args, tokenizer, base_path, dataset_name, rank, world_size):
     return dataset, verbalizer
 
 def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, verbalizer):
-    output_dir = '../result/{}/{}/'\
-        .format(args.model_config, args.dataset_name)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    if args.local_rank == 0:
-        with open(os.path.join(output_dir, "token.txt"), "w") as f:
-            time_tuple = time.localtime(time.time())
-            print('Time {}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}:'
-                .format(time_tuple[0], time_tuple[1], time_tuple[2], time_tuple[3],
-                        time_tuple[4], time_tuple[5]), file=f)
+    # output_dir = '../result/{}/{}/'\
+    #     .format(args.model_config, args.dataset_name)
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir)
+    # if args.local_rank == 0:
+    #     with open(os.path.join(output_dir, "token.txt"), "w") as f:
+    #         time_tuple = time.localtime(time.time())
+    #         print('Time {}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}:'
+    #             .format(time_tuple[0], time_tuple[1], time_tuple[2], time_tuple[3],
+    #                     time_tuple[4], time_tuple[5]), file=f)
         
     loss_func = bmt.loss.FusedCrossEntropy(ignore_index=-100)
 
