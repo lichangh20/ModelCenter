@@ -74,8 +74,10 @@ class Embedding(bmt.DistributedModule):
         """
         
         embeds = F.embedding(ids, self.weight,self.padding_idx)
+        self.flops = embeds.numel()
         if self.length_scale:
             embeds = embeds / math.sqrt(self.dim_model)
+            self.flops += embeds.numel()
         return embeds
     
     def projection(self, x : torch.Tensor):
@@ -87,8 +89,11 @@ class Embedding(bmt.DistributedModule):
         Returns:
             :obj:`torch.Tensor` of shape ``(batch, seq_len, vocab_output_size)``: The projection output.
         """
+        self.flops = 0
         if self.length_scale:
             x = x / math.sqrt(self.dim_model)
+            self.flops += x.numel()
+        self.flops += 2 * x.numel() * self.weight.shape[0]
         logits = F.linear(x, self.weight)
         return logits
 

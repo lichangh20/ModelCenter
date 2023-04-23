@@ -65,6 +65,7 @@ class LayerNorm(bmt.DistributedModule):
         """
         assert x.size(-1) == self.dim_norm
         
+        self.flops = 2 * x.numel()
         if self.bias is not None:
             return F.layer_norm(x, (self.dim_norm,), self.weight, self.bias, self.eps)
         else:

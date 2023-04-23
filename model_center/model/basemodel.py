@@ -150,6 +150,7 @@ class BaseModelOutput(ModelOutput):
     logits: Optional[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
+    flops: Optional[int] = None
 
 @dataclass
 class BaseModelOutputWithPooling(ModelOutput):

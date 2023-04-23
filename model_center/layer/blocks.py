@@ -135,6 +135,7 @@ class SelfAttentionBlock(torch.nn.Module):
 
         """    
         x = self.layernorm_before_attention(hidden_states)
+        self.flops = self.layernorm_before_attention.flops
         if self.post_layer_norm:
             hidden_states = x
         if not self.sparse_attention:
@@ -142,7 +143,8 @@ class SelfAttentionBlock(torch.nn.Module):
         else:
             #no position bias for sparse attention
             x = self.self_attention(x, attention_mask, position_bias)
-
+        self.flops += self.self_attention.flops
+        
         if use_cache:
             x, current_key_value = x
         else:
@@ -151,6 +153,7 @@ class SelfAttentionBlock(torch.nn.Module):
         if self.dropout is not None:
             x = self.dropout(x)
         hidden_states = hidden_states + x
+        self.flops += hidden_states.numel()
 
         if use_cache:
             return hidden_states, current_key_value
@@ -275,6 +278,7 @@ class CrossAttentionBlock(torch.nn.Module):
 
         """ 
         x = self.layernorm_before_attention(hidden_states)
+        self.flops = self.layernorm_before_attention.flops
         if self.post_layer_norm:
             hidden_states = x
 
@@ -284,7 +288,7 @@ class CrossAttentionBlock(torch.nn.Module):
             #no position bias for sparse attention
             #to do
             x = self.self_attention(x, attention_mask, position_bias)
-
+        self.flops += self.self_attention.flops
         if use_cache:
             x, current_key_value = x
         else:
@@ -293,6 +297,7 @@ class CrossAttentionBlock(torch.nn.Module):
         if self.dropout is not None:
             x = self.dropout(x)
         hidden_states = hidden_states + x
+        self.flops += hidden_states.numel()
 
         if use_cache:
             return hidden_states, current_key_value
@@ -376,12 +381,15 @@ class FFNBlock(torch.nn.Module):
 
         """ 
         x = self.layernorm_before_ffn(hidden_states)
+        self.flops = self.layernorm_before_ffn.flops
         if self.post_layer_norm:
             hidden_states = x
         x = self.ffn(x)
+        self.flops += self.ffn.flops
         if self.dropout is not None:
             x = self.dropout(x)
         hidden_states = hidden_states + x
+        self.flops += hidden_states.numel()
         return hidden_states
 
 
@@ -539,6 +547,7 @@ class TransformerBlock(torch.nn.Module):
 
         """
         current_key_value = None
+        self.flops = 0
         if not self.mask_att:
             # (batch, dim_model, seq_self)
             # add positional bias on sparse attention in the future
@@ -547,6 +556,7 @@ class TransformerBlock(torch.nn.Module):
                                         position_bias = self_position_bias,
                                         use_cache = use_cache,
                                         past_key_value = past_key_value)
+            self.flops += self.self_att.flops
             if use_cache:
                 hidden_states, current_key_value = hidden_states
         else:
@@ -559,14 +569,18 @@ class TransformerBlock(torch.nn.Module):
                                             key_value_states = cross_hidden_states,
                                             attention_mask = cross_attention_mask,
                                             position_bias = cross_position_bias)
+                self.flops += self.cross_att.flops
 
         if not self.mask_ffn:
             # (batch, dim_model, seq_self)
             if self.parallel_ffn:
                 hidden_states_2 = self.ffn(self_hidden_states)
+                self.flops += self.ffn.flops
                 hidden_states = hidden_states - self_hidden_states + hidden_states_2
+                self.flops += 2 * hidden_states.numel()
             else:
                 hidden_states = self.ffn(hidden_states)
+                self.flops += self.ffn.flops
 
         if use_cache:
             return hidden_states, current_key_value

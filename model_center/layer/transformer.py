@@ -74,6 +74,7 @@ class Encoder(torch.nn.Module):
             sparse_attention : bool = False,
             attention_window : int = 512,
             mask_modules : Optional[List[Tuple[int, int]]] = None,
+            flops : int =0,
         ):
 
         super().__init__()
@@ -147,10 +148,15 @@ class Encoder(torch.nn.Module):
 
         """
         if not use_cache:
+            self.flops = 0
             hidden_states = self.layers(hidden_states, attention_mask, position_bias, None, None, None)
+            for layer in self.layers:
+                self.flops += layer._module.flops
             hidden_states = self.output_layernorm(hidden_states)
+            self.flops += self.output_layernorm.flops
             return hidden_states
         else:
+            print("fault!")
             with torch.no_grad():
                 current_key_values = []
                 for i, module in enumerate(self.layers):

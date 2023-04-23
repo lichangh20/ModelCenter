@@ -162,8 +162,11 @@ class Attention(bmt.DistributedModule):
         len_k = key_value.size(1)
 
         h_q = self.project_q(query)             # (batch, len_q, num_heads * dim_head)
+        self.flops = self.project_q.flops
         h_k = self.project_k(key_value)         # (batch, len_k, num_heads * dim_head)
+        self.flops += self.project_k.flops
         h_v = self.project_v(key_value)         # (batch, len_k, num_heads * dim_head)
+        self.flops += self.project_v.flops
 
         h_q = h_q.view(batch_size, len_q, self.num_heads, self.dim_head).permute(0, 2, 1, 3)   # (batch, num_heads, len_q, dim_head)
         h_k = h_k.view(batch_size, len_k, self.num_heads_kv, self.dim_head).permute(0, 2, 1, 3)   # (batch, num_heads_kv, len_k, dim_head)
@@ -223,12 +226,14 @@ class Attention(bmt.DistributedModule):
 
          # (batch * num_heads, len_q, len_k) @ (batch * num_heads, len_k, dim_head) = (batch * num_heads, len_q, dim_head)
         score = torch.matmul(score, h_v)
+        self.flops += 2 * score.numel() * h_v.shape[-1]
 
         score = score.view(batch_size, self.num_heads, len_q, self.dim_head).permute(0, 2, 1, 3) # (batch, len_q, num_heads, dim_head)
         score = score.reshape(batch_size, len_q, self.num_heads * self.dim_head) # (batch, len_q, num_heads * dim_head)
 
         # (1#batch, dim_model, num_heads * dim_head) @ (batch, num_heads * dim_head, len_q) = (batch, dim_model, len_q)
         score = self.attention_out(score)
+        self.flops += self.attention_out.flops
 
         if use_cache:
             return score, current_key_value
@@ -306,9 +311,13 @@ class SparseSelfAttention(Attention):
         hidden_states = hidden_states.transpose(0, 1)
         # project hidden states
         query_vectors = self.project_q(hidden_states)
+        self.flops = self.project_q.flops
         key_vectors = self.project_k(hidden_states)
+        self.flops += self.project_k.flops
         value_vectors = self.project_v(hidden_states)
+        self.flops += self.project_v.flops
         query_vectors /= math.sqrt(self.dim_head)
+        self.flops += query_vectors.numel()
         seq_len, batch_size, embed_dim = query_vectors.size()
 
         query_vectors = query_vectors.view(seq_len, batch_size, self.num_heads, self.dim_head).transpose(0, 1)

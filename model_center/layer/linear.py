@@ -64,11 +64,15 @@ class Linear(bmt.DistributedModule):
             :obj:`torch.Tensor` of shape ``(batch, seq_len, dim_out)``: The output of the linear transform y.
 
         """
+        self.flops = 2 * x.numel() * self.weight.shape[0]
         if self.length_scale and self.length_scale_before:
             x = x / math.sqrt(self.dim_in)
+            self.flops += x.numel()
         x = F.linear(x, self.weight)
         if self.length_scale and not self.length_scale_before:
             x = x / math.sqrt(self.dim_in)
+            self.flops += x.numel()
         if self.bias is not None:
             x = x + self.bias
+            self.flops += x.numel()
         return x

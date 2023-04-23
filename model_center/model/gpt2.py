@@ -167,6 +167,7 @@ class GPT2(BaseModel):
         """
 
         # encode the input into embeddings.
+        flops = 0
         with torch.no_grad():
             assert input_ids is not None or inputs_embeds is not None
             if input_ids is not None:
@@ -195,11 +196,14 @@ class GPT2(BaseModel):
 
         if inputs_embeds is None:
             hidden_states = self.input_embedding(input_ids)
+            flops += self.input_embedding.flops
         else:
             hidden_states = inputs_embeds
         position_embeds = self.position_embedding(position_ids)
+        flops += self.position_embedding.flops
 
         hidden_states = hidden_states + position_embeds
+        flops += hidden_states.numel()
         hidden_states = self.embed_dropout(hidden_states)
 
         # input the input embeddings into the GPT-2 model
@@ -209,15 +213,19 @@ class GPT2(BaseModel):
                                                              use_cache = use_cache, past_key_values = past_key_values)
         else:
             hidden_states = self.encoder(hidden_states, attention_mask)
+        flops += self.encoder.flops
         # use the hidden states of the last layer for sequential tasks, such as sequential labeling and language modeling.
         logits = None
         if output_logits:
             if self.config.cls_head:
                 logits = self.cls_projection(hidden_states)
+                flops += self.cls_projection.flops
             elif self.config.tied:
                 logits = self.input_embedding.projection(hidden_states)
+                flops += self.input_embedding.flops
             elif not self.config.tied:
                 logits = self.output_projection(hidden_states)
+                flops += self.output_projection.flops
 
         # BaseModelOutput or tuple: The GPT-2 output. 
         if not return_dict:
@@ -229,4 +237,5 @@ class GPT2(BaseModel):
                 logits = logits,
                 hidden_states = None,
                 attentions = None,
+                flops = flops,
             )

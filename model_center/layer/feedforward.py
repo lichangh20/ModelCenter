@@ -142,6 +142,7 @@ class DenseACT(bmt.DistributedModule):
         """
         x = self.w(x)
         x = self.act(x)
+        self.flops = self.w.flops + x.numel()
         
         return x
 
@@ -236,10 +237,12 @@ class FeedForward(bmt.DistributedModule):
             :obj:`torch.Tensor` of shape ``(batch, seq_len, dim_out)``: The output of feed-forward module.
         """
         x = self.w_in(x)
+        self.flops = self.w_in.flops
 
         if self.dropout is not None:
             x = self.dropout(x)
 
         x = self.w_out(x)
+        self.flops += self.w_out.flops
 
         return x
